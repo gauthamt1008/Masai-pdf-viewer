@@ -15,7 +15,7 @@
 
 ## Engagement Metrics
 <img width="286" height="332" alt="image" src="https://github.com/user-attachments/assets/df3843b2-840b-4df2-9534-b7dc89d917e9" />
-
+<img width="895" height="398" alt="image" src="https://github.com/user-attachments/assets/89127263-1b21-4f11-93dc-5af9650ff6a7" />
 | Event              | Count | Growth   |
 |--------------------|-------|----------|
 | file_download      | 5.9K  | ↑1253.7% |
