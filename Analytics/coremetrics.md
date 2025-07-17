@@ -1,5 +1,5 @@
 # Core Metrics (Last 28 Days)
-![alt text](image.png)
+<img width="739" height="336" alt="image" src="https://github.com/user-attachments/assets/9337f118-00d5-4136-80f5-e404dc1d1146" />
 
 | Metric                | Value   | Trend (vs. Preceding Period) |
 |-----------------------|---------|-----------------------------|
