@@ -10,12 +10,12 @@
 | Bounce Rate           | 42.4%   | Healthy                     |
 
 ## Top Performing Content
-<img width="286" height="332" alt="image" src="https://github.com/user-attachments/assets/1640a620-c799-43aa-a1b5-31987dbeec06" />
-- **MASAI PDF Library**:  
+**MASAI PDF Library**:  
   2.7K views (↑152.7%) with 17K user events
 
 ## Engagement Metrics
-![Event Analytics](screenshots/event_analytics.png)
+<img width="286" height="332" alt="image" src="https://github.com/user-attachments/assets/df3843b2-840b-4df2-9534-b7dc89d917e9" />
+
 | Event              | Count | Growth   |
 |--------------------|-------|----------|
 | file_download      | 5.9K  | ↑1253.7% |
