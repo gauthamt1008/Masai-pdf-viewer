@@ -113,8 +113,8 @@ Based on current analytics:
 
 ## 🔗 Resources
 - [Live Website](https://masailibrary.com/)
-- [CloudFormation Template](/infrastructure/cloudformation.yml)
-- [Core Metrics Report](/analytics/core_metrics.md)
+- [CloudFormation Template](/Infrastructure/cloudformation.yml)
+- [Core Metrics Report](/Analytics/coremetrics.md)
 
 ## 💌 Contact
 **Maintainer:** Aryaman Parashar Behera
