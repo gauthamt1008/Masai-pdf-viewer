@@ -1,76 +1,78 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'Static Website with S3, CloudFront, Route 53, and SSL Certificate'
+Description: Infrastructure as Code for Masai Library Static Website
 
 Parameters:
-  DomainName:
+  MasaiLibraryDomainName:
+    Description: Primary domain name for Masai Library
     Type: String
-    Description: 'The domain name for the website (e.g., example.com)'
-    Default: 'your-domain.com'
-
+    Default: 'masailibrary.com'
   HostedZoneId:
+    Description: Route53 Hosted Zone ID for DNS management
     Type: String
-    Description: 'The Route 53 Hosted Zone ID for the domain'
-    Default: 'Z1234567890ABC'
+    Default: 'Z123456789ABC'
+  MasaiLibraryCertificateArn:
+    Description: ARN of ACM certificate for masailibrary.com
+    Type: String
+    Default: 'arn:aws:acm:us-east-1:123456789012:certificate/abcd1234-5678-90ef-ghij-klmnopqrstuv'
 
 Resources:
-  # S3 Bucket for hosting static website
-  S3Bucket:
+  # S3 Bucket for Website Content
+  MasaiLibraryS3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${DomainName}-static-website'
+      BucketName: !Ref MasaiLibraryDomainName
+      AccessControl: Private
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: error.html
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
-      CorsConfiguration:
-        CorsRules:
-          - AllowedOrigins:
-              - !Sub 'https://${DomainName}'
-            AllowedMethods:
-              - GET
-              - HEAD
-            AllowedHeaders:
-              - '*'
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: MasaiLibrary
 
-  # S3 Bucket Policy for public read access
-  S3BucketPolicy:
+  # CloudFront Origin Access Identity
+  MasaiLibraryCloudFrontOAI:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: 'OAI for Masai Library Static Website'
+
+  # S3 Bucket Policy (Restrict to CloudFront only)
+  MasaiLibraryBucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
-      Bucket: !Ref S3Bucket
+      Bucket: !Ref MasaiLibraryS3Bucket
       PolicyDocument:
         Statement:
-          - Sid: PublicReadGetObject
+          - Action: 
+              - s3:GetObject
             Effect: Allow
-            Principal: '*'
-            Action: 's3:GetObject'
-            Resource: !Sub '${S3Bucket}/*'
-
-  # SSL Certificate for HTTPS
-  SSLCertificate:
-    Type: AWS::CertificateManager::Certificate
-    Properties:
-      DomainName: !Ref DomainName
-      SubjectAlternativeNames:
-        - !Sub 'www.${DomainName}'
-      ValidationMethod: DNS
-      DomainValidationOptions:
-        - DomainName: !Ref DomainName
-          HostedZoneId: !Ref HostedZoneId
+            Resource: !Sub "arn:aws:s3:::${MasaiLibraryS3Bucket}/*"
+            Principal:
+              CanonicalUser: !GetAtt MasaiLibraryCloudFrontOAI.S3CanonicalUserId
 
   # CloudFront Distribution
-  CloudFrontDistribution:
+  MasaiLibraryCloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
         Aliases:
-          - !Ref DomainName
-          - !Sub 'www.${DomainName}'
+          - !Ref MasaiLibraryDomainName
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
         DefaultCacheBehavior:
-          TargetOriginId: S3Origin
+          TargetOriginId: MasaiLibraryS3Origin
           ViewerProtocolPolicy: redirect-to-https
           AllowedMethods:
             - GET
@@ -79,95 +81,103 @@ Resources:
           CachedMethods:
             - GET
             - HEAD
+            - OPTIONS
           ForwardedValues:
             QueryString: false
             Cookies:
               Forward: none
           Compress: true
-          DefaultTTL: 86400
-          MaxTTL: 31536000
-        DefaultRootObject: index.html
-        Enabled: true
         Origins:
-          - DomainName: !GetAtt S3Bucket.DomainName
-            Id: S3Origin
+          - Id: MasaiLibraryS3Origin
+            DomainName: !GetAtt MasaiLibraryS3Bucket.DomainName
             S3OriginConfig:
-              OriginAccessIdentity: ''
-        PriceClass: PriceClass_100
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${MasaiLibraryCloudFrontOAI}"
         ViewerCertificate:
-          AcmCertificateArn: !Ref SSLCertificate
+          AcmCertificateArn: !Ref MasaiLibraryCertificateArn
           SslSupportMethod: sni-only
           MinimumProtocolVersion: TLSv1.2_2021
         CustomErrorResponses:
-          - ErrorCode: 404
-            ResponseCode: 200
-            ResponsePagePath: /index.html
           - ErrorCode: 403
             ResponseCode: 200
             ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
 
-  # Route 53 A Record for domain
-  Route53ARecord:
+  # WAF Web ACL for Security
+  MasaiLibraryWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: MasaiLibrarySecurityWebACL
+      Scope: CLOUDFRONT
+      Description: 'Security protection for Masai Library'
+      DefaultAction:
+        Allow: {}
+      VisibilityConfig:
+        SampledRequestsEnabled: true
+        CloudWatchMetricsEnabled: true
+        MetricName: MasaiLibraryWebACLMetrics
+      Rules:
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 0
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            SampledRequestsEnabled: true
+            CloudWatchMetricsEnabled: true
+            MetricName: AWSManagedRulesCommonRuleSet
+
+  # Associate WAF with CloudFront
+  MasaiLibraryWebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !GetAtt MasaiLibraryCloudFrontDistribution.Arn
+      WebACLArn: !GetAtt MasaiLibraryWebACL.Arn
+
+  # Route53 DNS Record
+  MasaiLibraryDNSRecord:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: !Ref HostedZoneId
-      Name: !Ref DomainName
+      Name: !Ref MasaiLibraryDomainName
       Type: A
       AliasTarget:
-        DNSName: !GetAtt CloudFrontDistribution.DomainName
-        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront Hosted Zone ID
-        EvaluateTargetHealth: false
+        DNSName: !GetAtt MasaiLibraryCloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront's fixed hosted zone ID
 
-  # Route 53 A Record for www subdomain
-  Route53WWWRecord:
-    Type: AWS::Route53::RecordSet
+  # S3 Bucket for Analytics Storage (Optional)
+  MasaiLibraryAnalyticsBucket:
+    Type: AWS::S3::Bucket
     Properties:
-      HostedZoneId: !Ref HostedZoneId
-      Name: !Sub 'www.${DomainName}'
-      Type: A
-      AliasTarget:
-        DNSName: !GetAtt CloudFrontDistribution.DomainName
-        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront Hosted Zone ID
-        EvaluateTargetHealth: false
-
-  # CloudWatch Alarms for monitoring
-  CloudFrontErrorRate:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub '${DomainName}-CloudFront-4xx-Error-Rate'
-      AlarmDescription: 'CloudFront 4xx error rate alarm'
-      MetricName: 4xxErrorRate
-      Namespace: AWS/CloudFront
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 5
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: DistributionId
-          Value: !Ref CloudFrontDistribution
+      BucketName: !Sub '${MasaiLibraryDomainName}-analytics'
+      AccessControl: Private
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: MasaiLibraryAnalytics
 
 Outputs:
-  WebsiteURL:
-    Description: 'URL of the website'
-    Value: !Sub 'https://${DomainName}'
-    Export:
-      Name: !Sub '${AWS::StackName}-WebsiteURL'
-
-  S3BucketName:
-    Description: 'Name of the S3 bucket'
-    Value: !Ref S3Bucket
-    Export:
-      Name: !Sub '${AWS::StackName}-S3BucketName'
-
-  CloudFrontDistributionId:
-    Description: 'CloudFront Distribution ID'
-    Value: !Ref CloudFrontDistribution
-    Export:
-      Name: !Sub '${AWS::StackName}-CloudFrontDistributionId'
-
-  SSLCertificateArn:
-    Description: 'SSL Certificate ARN'
-    Value: !Ref SSLCertificate
-    Export:
-      Name: !Sub '${AWS::StackName}-SSLCertificateArn'
+  MasaiLibraryCloudFrontURL:
+    Value: !GetAtt MasaiLibraryCloudFrontDistribution.DomainName
+    Description: CloudFront Distribution Domain Name
+  MasaiLibraryS3BucketName:
+    Value: !Ref MasaiLibraryS3Bucket
+    Description: S3 Bucket for Website Content
+  MasaiLibraryWebsiteURL:
+    Value: !Sub 'https://${MasaiLibraryDomainName}'
+    Description: Production Website URL
+  MasaiLibraryAnalyticsBucketName:
+    Value: !Ref MasaiLibraryAnalyticsBucket
+    Description: S3 Bucket for Analytics Data Storage
